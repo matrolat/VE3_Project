@@ -1,9 +1,23 @@
-from flask import Flask, jsonify, request
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, jsonify, request # type: ignore
+from flask_sqlalchemy import SQLAlchemy # type: ignore
+from flask_cors import CORS # type: ignore
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity # type: ignore
+import datetime
+from flask_bcrypt import Bcrypt # type: ignore
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tasks.db'  # Change to PostgreSQL for production
+CORS(app)  # Enable CORS for all routes
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tasks.db'
+app.config['JWT_SECRET_KEY'] = 'VE3PROJECT'
 db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
+jwt = JWTManager(app)
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), nullable=False)
+    password = db.Column(db.String(150), nullable=False)
 
 class Task(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -14,6 +28,27 @@ class Task(db.Model):
 with app.app_context():
     db.create_all()
 
+# User Registration
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+    new_user = User(username=data['username'], password=hashed_password)
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify({"message": "User created successfully"}), 201
+
+# User Login
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    user = User.query.filter_by(username=data['username']).first()
+    if user and bcrypt.check_password_hash(user.password, data['password']):
+        access_token = create_access_token(identity={'username': user.username}, expires_delta=datetime.timedelta(hours=1))
+        return jsonify({'token': access_token}), 200
+    return jsonify({"message": "Invalid credentials"}), 401
+
+# GET/tasks
 @app.route('/tasks', methods=['GET'])
 def get_tasks():
     tasks = Task.query.all()
@@ -24,6 +59,7 @@ def get_tasks():
         'completed': task.completed
     } for task in tasks])
 
+#GET/tasks/:id
 @app.route('/tasks/<int:id>', methods=['GET'])
 def get_task(id):
     task = Task.query.get(id)
@@ -36,10 +72,10 @@ def get_task(id):
         })
     return jsonify({'error': 'Task not found!'}), 404
 
+#POST/tasks
 @app.route('/tasks', methods=['POST'])
 def create_task():
     data = request.json
-    # Validate input
     if 'title' not in data or 'description' not in data:
         return jsonify({'error': 'Title and description are required!'}), 400
     
@@ -57,12 +93,12 @@ def create_task():
         }
     }), 201
 
+#PUT /tasks/:id
 @app.route('/tasks/<int:id>', methods=['PUT'])
 def update_task(id):
     task = Task.query.get(id)
     if task:
         data = request.json
-        # Validate input
         if 'title' not in data or 'description' not in data or 'completed' not in data:
             return jsonify({'error': 'Title, description, and completed status are required!'}), 400
         
@@ -74,6 +110,7 @@ def update_task(id):
         return jsonify({'message': 'Task updated!'})
     return jsonify({'error': 'Task not found!'}), 404
     
+#DELETE/tasks/:id
 @app.route('/tasks/<int:id>', methods=['DELETE'])
 def delete_task(id):
     task = Task.query.get(id)
@@ -85,3 +122,4 @@ def delete_task(id):
 
 if __name__ == '__main__':
     app.run(debug=True)
+    
