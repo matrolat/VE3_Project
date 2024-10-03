@@ -4,6 +4,17 @@ from flask_cors import CORS # type: ignore
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity # type: ignore
 import datetime
 from flask_bcrypt import Bcrypt # type: ignore
+import os
+from flask import send_from_directory # type: ignore
+
+# Serve React App
+@app.route('/', defaults={'path': ''}) # type: ignore
+@app.route('/<path:path>') # type: ignore
+def serve(path):
+    if path != "" and os.path.exists("task-manager-frontend/build/" + path):
+        return send_from_directory('task-manager-frontend/build', path)
+    else:
+        return send_from_directory('task-manager-frontend/build', 'index.html')
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
